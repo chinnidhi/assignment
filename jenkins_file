@@ -1,0 +1,50 @@
+pipeline {
+  agent none
+  stages {
+	stage('Setup AWS Credentials') {
+		  agent { label 'slave' }
+		  environment {
+			  AWS_ACCESS_KEY_ID = credentials('aws-access-key-id')
+			  AWS_SECRET_ACCESS_KEY = credentials('aws-secret-access-key')
+		  }
+		  
+	stage('Git Checkout') {
+	steps {
+		sh 'git clone https://github.com/chinnidhi/assignment.git'
+	}
+    }
+	
+	stage('Terraform Initialize') {
+		steps {
+			dir('terraform') {
+				sh 'terraform init'
+			}
+		}
+	}
+	
+	stage('Terraform Initialize') {
+	steps {
+		dir('terraform') {
+			sh 'terraform apply -auto-approve'
+		}
+	}
+	}
+
+        stage('Fetch Public IP & Create Inventory') {
+            steps {
+                script {
+                    def public_ip = sh(script: "terraform output -raw public_ip", returnStdout: true).trim()
+                    if (!public_ip || public_ip == "null") {
+                        error "Failed to fetch public IP. Check Terraform output."
+                    }
+                    writeFile file: 'ansible/inventory', text: "[webserver]\n${public_ip} ansible_user=ubuntu"
+                }
+            }
+        }
+		 
+        stage('Run Ansible Playbook') {
+            steps {
+                sh 'ansible-playbook -i inventory.ini play1.yml'                
+            }
+        }
+
